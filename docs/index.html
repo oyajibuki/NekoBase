@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>今日のお願い｜ネコベース</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f6f3ef; --card:#fff; --text:#1c1b19; --sub:#6f6a63;
+          --accent:#e58c42; --line:#e6e0d8; --ok:#34c759; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#17150f; --card:#221f19; --text:#f4f1ec; --sub:#a49c91; --line:#332e26; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:16px 16px 56px; background:var(--bg); color:var(--text);
+         font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif; }
+  header { text-align:center; padding:12px 0 20px; }
+  h1 { font-size:22px; margin:0 0 4px; line-height:1.4; }
+  .sub { color:var(--sub); font-size:14px; }
+  .card { background:var(--card); border-radius:14px; padding:16px; margin-bottom:14px; }
+  .card.done { opacity:.55; }
+  .title { font-size:19px; font-weight:700; display:flex; gap:10px; align-items:center; }
+  .for { color:var(--sub); font-size:14px; margin:2px 0 0 34px; }
+  .guide { margin-top:12px; }
+  .guide-name { color:var(--sub); font-size:13px; margin-bottom:6px; }
+  .pinwrap { position:relative; border-radius:10px; overflow:hidden; }
+  .pinwrap img { width:100%; display:block; }
+  .pin { position:absolute; width:38px; height:38px; margin:-19px 0 0 -19px;
+         border-radius:50%; background:rgba(255,59,48,.92); border:3px solid #fff;
+         box-shadow:0 2px 8px rgba(0,0,0,.35); }
+  .note { color:var(--sub); font-size:13px; margin-top:8px; }
+  label { display:block; font-size:14px; color:var(--sub); margin:14px 0 6px; }
+  input[type=text], select, input[type=file] { width:100%; padding:12px; font-size:16px;
+      border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--text); }
+  button { width:100%; padding:16px; font-size:18px; font-weight:700; border:0; border-radius:12px;
+           background:var(--accent); color:#fff; margin-top:14px; }
+  button.secondary { background:transparent; color:var(--accent); border:2px solid var(--accent); }
+  button[disabled] { opacity:.5; }
+  .flash { background:#e8f6ea; color:#1e7a32; padding:14px; border-radius:12px; margin-bottom:14px;
+           font-weight:600; text-align:center; }
+  .flash.error { background:#fdeaea; color:#a32020; }
+  @media (prefers-color-scheme: dark) {
+    .flash { background:#1d3a23; color:#9fe0ac; }
+    .flash.error { background:#3a1d1d; color:#f0a8a8; }
+  }
+  .done-mark { color:var(--ok); }
+</style>
+</head>
+<body>
+<div id="flash"></div>
+<div id="app"><header><div class="sub">読み込んでいます…</div></header></div>
+
+<script>
+// 表示だけを担当するページ。権限の判定はすべて Edge Function 側にある。
+// トークンは # 以降に置く（サーバーのログにも Referer にも載らないように）。
+const API = "https://ampqzkoiijppkvenufnl.supabase.co/functions/v1/guest";
+const token = location.hash.replace(/^#/, "").trim();
+
+const SYMBOLS = { food:"🍚", water:"💧", litter:"🚽", groom:"🪮", medicine:"💊", play:"🧶", other:"✅" };
+const POOP = [
+  ["normal","ふつう"], ["soft","やわらかい"], ["diarrhea","下痢"],
+  ["hard","かたい"], ["blood","血が混じる"], ["absent","出ていない"], ["none","記録しない"],
+];
+
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+
+function showFlash(message, isError) {
+  document.getElementById("flash").innerHTML =
+    message ? `<div class="flash${isError ? " error" : ""}">${esc(message)}</div>` : "";
+  if (message) window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function notFound(message) {
+  document.getElementById("app").innerHTML =
+    `<header><h1>リンクが見つかりません</h1><p class="sub">${esc(message || "期限が切れているか、取り消された可能性があります。飼い主さんに新しいリンクをもらってください。")}</p></header>`;
+}
+
+function taskCard(task) {
+  const done = !!task.done_by;
+  const guide = (!done && task.location) ? `
+    <div class="guide">
+      <div class="guide-name">📍 ${esc(task.location.name)}</div>
+      ${task.location.photo_url ? `
+        <div class="pinwrap">
+          <img src="${esc(task.location.photo_url)}" alt="保管場所">
+          ${task.location.marker_x != null && task.location.marker_y != null
+            ? `<div class="pin" style="left:${(task.location.marker_x * 100).toFixed(2)}%;top:${(task.location.marker_y * 100).toFixed(2)}%"></div>`
+            : ""}
+        </div>` : ""}
+      ${task.location.note ? `<div class="note">${esc(task.location.note)}</div>` : ""}
+    </div>` : "";
+
+  const form = done
+    ? `<div class="note">${esc(task.done_by)} が完了しました</div>`
+    : `
+    <form data-task="${esc(task.id)}">
+      <label>写真（あれば）</label>
+      <input type="file" name="photo" accept="image/*" capture="environment">
+      <label>ひとこと</label>
+      <input type="text" name="note" placeholder="チュール1本ペロリでした">
+      ${task.task_type === "litter" ? `
+        <label>うんちの様子</label>
+        <select name="poop_status">
+          ${POOP.map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}
+        </select>` : ""}
+      <button type="submit">完了を報告する</button>
+    </form>`;
+
+  return `<section class="card${done ? " done" : ""}">
+    <div class="title">${done ? '<span class="done-mark">✓</span>' : (SYMBOLS[task.task_type] || "✅")} ${esc(task.title)}</div>
+    ${task.cat_name ? `<div class="for">${esc(task.cat_name)} の分</div>` : ""}
+    ${guide}${form}
+  </section>`;
+}
+
+function render(data) {
+  const remaining = data.tasks.filter((t) => !t.done_by).length;
+  const lowForm = data.supplies.length === 0 ? "" : `
+    <section class="card">
+      <form id="low-form">
+        <label>もうすぐ無くなりそうなものがあれば教えてください</label>
+        <select name="supply_id">
+          ${data.supplies.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join("")}
+        </select>
+        <button type="submit" class="secondary">飼い主さんに知らせる</button>
+      </form>
+    </section>`;
+
+  document.getElementById("app").innerHTML = `
+    <header>
+      <h1>${remaining === 0 ? "今日のお願いは全部おわりました！" : `あと ${remaining} 件です`}</h1>
+      <div class="sub">${esc(data.date_label)}・${esc(data.guest_name)} さん</div>
+    </header>
+    ${data.tasks.length ? data.tasks.map(taskCard).join("") : '<section class="card">今日のお世話はありません。</section>'}
+    ${lowForm}`;
+
+  document.querySelectorAll("form[data-task]").forEach((form) => {
+    form.addEventListener("submit", (event) => submit(event, form, "done", { task_id: form.dataset.task }));
+  });
+  const lowFormEl = document.getElementById("low-form");
+  if (lowFormEl) lowFormEl.addEventListener("submit", (event) => submit(event, lowFormEl, "low", {}));
+}
+
+async function submit(event, form, action, extra) {
+  event.preventDefault();
+  const button = form.querySelector("button");
+  button.disabled = true;
+  button.textContent = "送信中…";
+
+  try {
+    const body = new FormData(form);
+    for (const [key, value] of Object.entries(extra)) body.set(key, value);
+    const response = await fetch(`${API}/${token}/${action}`, {
+      method: "POST",
+      headers: { accept: "application/json" },
+      body,
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || "送信できませんでした。");
+    showFlash(result.message, false);
+    await load();
+  } catch (error) {
+    showFlash(error.message || "送信できませんでした。通信状況を確かめてもう一度お試しください。", true);
+    button.disabled = false;
+    button.textContent = action === "done" ? "完了を報告する" : "飼い主さんに知らせる";
+  }
+}
+
+async function load() {
+  if (!token) return notFound("リンクが正しくコピーされていないようです。");
+  try {
+    const response = await fetch(`${API}/${token}/data`, { headers: { accept: "application/json" } });
+    const data = await response.json();
+    if (!response.ok) return notFound(data.message);
+    render(data);
+  } catch (_error) {
+    notFound("うまく読み込めませんでした。電波の良いところでもう一度開いてみてください。");
+  }
+}
+
+load();
+</script>
+</body>
+</html>
