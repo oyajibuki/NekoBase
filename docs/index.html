@@ -44,6 +44,11 @@
     .flash.error { background:#3a1d1d; color:#f0a8a8; }
   }
   .done-mark { color:var(--ok); }
+  .summary { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { font-size:14px; padding:8px 12px; border-radius:999px; background:var(--bg); border:1px solid var(--line); }
+  .chip.warn { background:#fdf1e3; border-color:#e8c9a0; color:#8a5a20; }
+  @media (prefers-color-scheme: dark) { .chip.warn { background:#3a2d1d; border-color:#5e4a2c; color:#f0cd9f; } }
+  .card h2 { font-size:15px; margin:0 0 10px; color:var(--sub); font-weight:600; }
 </style>
 </head>
 <body>
@@ -113,6 +118,33 @@ function taskCard(task) {
   </section>`;
 }
 
+/// 家族向けリンクだけに出す、その日のうんちの確認状況と在庫の残量
+function familyCards(data) {
+  if (data.kind !== "family") return "";
+
+  const cats = data.cats || [];
+  const pending = cats.filter((c) => !c.poop_confirmed);
+  const poop = cats.length === 0 ? "" : `
+    <section class="card">
+      <h2>今日のうんち</h2>
+      <div class="summary">
+        ${cats.map((c) => `<span class="chip${c.poop_confirmed ? "" : " warn"}">${esc(c.name)}　${c.poop_confirmed ? "✓ 確認" : "まだ"}</span>`).join("")}
+      </div>
+      ${pending.length ? `<div class="note">${pending.map((c) => esc(c.name)).join("・")} のうんちがまだ確認できていません。</div>` : ""}
+    </section>`;
+
+  const low = (data.supplies || []).filter((s) => s.status && s.status !== "sufficient");
+  const stock = low.length === 0 ? "" : `
+    <section class="card">
+      <h2>少なくなっているもの</h2>
+      <div class="summary">
+        ${low.map((s) => `<span class="chip warn">${esc(s.name)}　${s.status === "empty" ? "切れた" : "少ない"}</span>`).join("")}
+      </div>
+    </section>`;
+
+  return poop + stock;
+}
+
 function render(data) {
   const remaining = data.tasks.filter((t) => !t.done_by).length;
   const lowForm = data.supplies.length === 0 ? "" : `
@@ -131,6 +163,7 @@ function render(data) {
       <h1>${remaining === 0 ? "今日のお願いは全部おわりました！" : `あと ${remaining} 件です`}</h1>
       <div class="sub">${esc(data.date_label)}・${esc(data.guest_name)} さん</div>
     </header>
+    ${familyCards(data)}
     ${data.tasks.length ? data.tasks.map(taskCard).join("") : '<section class="card">今日のお世話はありません。</section>'}
     ${lowForm}`;
 
