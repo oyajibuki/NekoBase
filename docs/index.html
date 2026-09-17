@@ -77,7 +77,8 @@ function showFlash(message, isError) {
 
 function notFound(message) {
   document.getElementById("app").innerHTML =
-    `<header><h1>リンクが見つかりません</h1><p class="sub">${esc(message || "期限が切れているか、取り消された可能性があります。飼い主さんに新しいリンクをもらってください。")}</p></header>`;
+    `<header><h1>リンクが見つかりません</h1><p class="sub">${esc(message || "期限が切れているか、取り消された可能性があります。飼い主さんに新しいリンクをもらってください。")}</p>
+     <p class="sub"><a href="support.html" style="color:var(--accent)">ネコベースについて / サポート</a></p></header>`;
 }
 
 function taskCard(task) {
@@ -200,7 +201,7 @@ async function submit(event, form, action, extra) {
 }
 
 async function load() {
-  if (!token) return notFound("リンクが正しくコピーされていないようです。");
+  if (!token) return notFound("このページは、飼い主さんから受け取った招待リンクから開いてください。");
   try {
     const response = await fetch(`${API}/${token}/data`, { headers: { accept: "application/json" } });
     const data = await response.json();
